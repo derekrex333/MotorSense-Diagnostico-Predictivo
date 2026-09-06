@@ -57,6 +57,7 @@ class LogisticRegressionScratch:
         verbose: bool = False,
         fit_intercept: bool = True,
         random_state: int | None = None,
+        class_weight: str | dict | None = None,
     ):
         self.lr = float(lr)
         self.n_iter = int(n_iter)
@@ -64,12 +65,14 @@ class LogisticRegressionScratch:
         self.verbose = bool(verbose)
         self.fit_intercept = bool(fit_intercept)
         self.random_state = random_state
+        self.class_weight = class_weight
 
         # se setean en fit
         self.weights_: np.ndarray | None = None
         self.bias_: float = 0.0
         self.loss_history_: list[float] = []
         self.n_features_in_: int | None = None
+        self.class_weight_: dict | None = None
 
     # compatibilidad con codigo que espera .weights / .coef_
     @property
@@ -111,6 +114,25 @@ class LogisticRegressionScratch:
         n_samples, n_features = X.shape
         self.n_features_in_ = n_features
 
+        # pesos por clase para desbalanceo
+        if self.class_weight is not None:
+            if isinstance(self.class_weight, str) and self.class_weight == "balanced":
+                from collections import Counter
+
+                counter = Counter(y)
+                n_classes = len(counter)
+                self.class_weight_ = {cls: n_samples / (n_classes * cnt) for cls, cnt in counter.items()}
+            elif isinstance(self.class_weight, dict):
+                self.class_weight_ = dict(self.class_weight)
+            else:
+                raise ValueError("class_weight debe ser 'balanced', dict o None")
+            sample_weight = np.array([self.class_weight_[int(v)] for v in y], dtype=np.float64)
+            # normalizamos para que la media sea 1 y no cambie lr efectivo
+            sample_weight = sample_weight / np.mean(sample_weight)
+        else:
+            self.class_weight_ = None
+            sample_weight = np.ones(n_samples, dtype=np.float64)
+
         # init en ceros - deterministico y simple
         rng = np.random.default_rng(self.random_state)
         # si random_state se da, inicializamos con ruido pequeno para romper simetria
@@ -139,8 +161,8 @@ class LogisticRegressionScratch:
                 break
             prev_loss = loss
 
-            # gradientes
-            error = proba - y  # (n,)
+            # gradientes con peso por muestra (si hay desbalanceo)
+            error = (proba - y) * sample_weight  # (n,)
             dw = (X.T @ error) / n_samples  # (p,)
             db = float(np.mean(error)) if self.fit_intercept else 0.0
 
