@@ -12,5 +12,10 @@ jobs:
         run: |
           pip install -e .
           pip install scikit-learn pandas numpy matplotlib imbalanced-learn pytest
+      - name: Download dataset
+        run: |
+          mkdir -p data/raw
+          curl -L -o data/raw/ai4i2020.csv https://archive.ics.uci.edu/ml/machine-learning-databases/00601/ai4i2020.csv
+          ls -lh data/raw/
       - name: Run tests
         run: pytest -v
