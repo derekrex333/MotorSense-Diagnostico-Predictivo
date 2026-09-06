@@ -1,6 +1,8 @@
 # MotorSense — Diagnóstico Predictivo
 
-> ¿Podemos anticipar que un motor va a fallar antes de que pare la línea? Este proyecto prueba que sí, usando el dataset AI4I 2020 y comparando una regresión logística hecha desde cero contra los baselines de scikit-learn.
+[![tests](https://github.com/derekrex333/MotorSense-Diagnostico-Predictivo/actions/workflows/tests.yml/badge.svg)](https://github.com/derekrex333/MotorSense-Diagnostico-Predictivo/actions/workflows/tests.yml)
+
+> ¿Podemos anticipar que un motor va a fallar antes de que pare la línea? Este proyecto prueba que sí, usando el dataset AI4I 2020 (temperatura aire/proceso, velocidad rotacional, torque, desgaste de herramienta) y comparando una regresión logística hecha desde cero contra baselines de scikit-learn.
 
 Trabajamos por fases, cada una con su commit, para que el historial cuente cómo se fue armando — desde el primer vistazo al dataset hasta los tests que blindan el notebook.
 
@@ -87,6 +89,20 @@ print(to_dataframe(get_feature_weights(sk, out["feature_names"])))
 | RF balanced | 0.885 | 0.794 | 0.837 | **0.971** | [[1925,7],[14,54]] |
 
 Sin compensar el recall se hunde; con `balanced` o SMOTE se salva la clase minoritaria a costa de más falsos positivos — preferible en mantenimiento.
+
+### ¿Por qué Random Forest gana y por qué seguimos con logística?
+
+La tabla no miente: RF balanced (0.885 prec / 0.794 rec / 0.971 AUC) barre a cualquier logística. No es un bug, es el mensaje:
+
+**RF ve interacciones no lineales que la logística no puede.** Torque, velocidad y desgaste no suman lineal — se potencian. Un torque medio con desgaste alto y velocidad baja es mucho más peligroso que la suma de cada uno por separado; RF lo captura con sus splits (`torque > 50 && wear > 150 && power > 7000`), la logística solo traza un hiperplano. Y Power es `torque × velocidad` — ya es no lineal en crudo, RF lo explota sin que se lo digas.
+
+Entonces, ¿por qué el proyecto gira en torno a la logística?
+
+1. **Interpretabilidad para taller:** el peso `+6.85` de Torque se traduce a "cada desviación estándar de torque multiplica por ~940× la odds de falla" — un técnico lo usa mañana. RF te da `feature_importances` pero no dirección ni magnitud lineal.
+2. **Baseline honesto y reproducible:** implementar sigmoide + log-loss + GD desde cero, validar paridad (ROC diff 0.021, corr 0.94) y luego perder contra RF es justamente la lección — sabes cuánto dejas en la mesa por elegir linealidad.
+3. **Costo y despliegue:** logística es un vector de 10 pesos; RF son 200 árboles. Para edge en planta, la logística entra en un microcontrolador.
+
+En producción yo desplegaría RF (o un ensemble) para la alerta, pero mantendría la logística como modelo explicable para el reporte de causa raíz. El README no esconde esa tensión — la hace explícita.
 
 **Paridad validada:** scratch vs sklearn (penalty=None) ROC diff 0.021, corr probas 0.94, acuerdo 99.4%, corr pesos 0.93. Prueba de que el algoritmo se entendió, no se copió.
 
